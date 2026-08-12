@@ -167,13 +167,17 @@ async function sendTicketEmail({ to, name, show, pdfBuffer }) {
     auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_APP_PASSWORD }
   });
 
-  await transporter.sendMail({
+  console.log(`[email] Sending ticket for "${show.title}" to: "${to}" from: "${process.env.EMAIL_USER}"`);
+
+  const info = await transporter.sendMail({
     from: `"CampusFlix" <${process.env.EMAIL_USER}>`,
     to,
     subject: `Your CampusFlix Ticket — ${show.title}`,
     text: `Hi ${name},\n\nYour ticket for ${show.title} is attached as a PDF. See you there!\n\n— CampusFlix`,
     attachments: [{ filename: `campusflix-ticket-${show.title.replace(/\s+/g, '-').toLowerCase()}.pdf`, content: pdfBuffer }]
   });
+
+  console.log(`[email] Sent. messageId=${info.messageId} accepted=${JSON.stringify(info.accepted)} rejected=${JSON.stringify(info.rejected)} response=${info.response}`);
 }
 
 // ---------------------------------------------------------------------------
