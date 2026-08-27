@@ -35,9 +35,17 @@ if (!fs.existsSync(REFERRALS_FILE)) fs.writeFileSync(REFERRALS_FILE, '[]');
 const readJSON = file => JSON.parse(fs.readFileSync(file, 'utf-8'));
 const writeJSON = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
 
+// True if the show's date+time hasn't passed yet — used to auto-hide
+// events from the public site once they're over, no manual cleanup needed.
+function isUpcoming(show) {
+  if (!show.date) return true;
+  const eventDateTime = new Date(`${show.date}T${show.time || '23:59'}:00`);
+  return eventDateTime.getTime() > Date.now();
+}
+
 const Shows = {
   all: () => readJSON(SHOWS_FILE),
-  published: () => Shows.all().filter(s => s.status === 'live'),
+  published: () => Shows.all().filter(s => s.status === 'live' && isUpcoming(s)),
   find: id => Shows.all().find(s => s.id === id),
   create: show => { const s = Shows.all(); s.unshift(show); writeJSON(SHOWS_FILE, s); return show; },
   update: (id, updates) => {
@@ -251,7 +259,7 @@ app.get('/api/shows/admin/all', requireAdmin, (req, res) => res.json(Shows.all()
 
 app.get('/api/shows/:id', (req, res) => {
   const show = Shows.find(req.params.id);
-  if (!show || show.status !== 'live') return res.status(404).json({ error: 'Show not found' });
+  if (!show || show.status !== 'live' || !isUpcoming(show)) return res.status(404).json({ error: 'Show not found' });
   res.json(publicShowFields(show));
 });
 
@@ -291,7 +299,7 @@ app.post('/api/tickets/purchase', async (req, res) => {
     if (!showId || !name || !phone || !email) return res.status(400).json({ error: 'Missing name, phone, email, or show' });
 
     const show = Shows.find(showId);
-    if (!show || show.status !== 'live') return res.status(404).json({ error: 'Show not found' });
+    if (!show || show.status !== 'live' || !isUpcoming(show)) return res.status(404).json({ error: 'Show not found' });
 
     const remaining = show.capacity - (show.sold || 0);
     if (qty > remaining) return res.status(400).json({ error: `Only ${remaining} tickets left` });
