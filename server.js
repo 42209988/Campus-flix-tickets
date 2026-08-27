@@ -24,11 +24,13 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const SHOWS_FILE = path.join(DATA_DIR, 'shows.json');
 const TICKETS_FILE = path.join(DATA_DIR, 'tickets.json');
+const REFERRALS_FILE = path.join(DATA_DIR, 'referrals.json');
 const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 
 [DATA_DIR, UPLOADS_DIR].forEach(dir => fs.existsSync(dir) || fs.mkdirSync(dir, { recursive: true }));
 if (!fs.existsSync(SHOWS_FILE)) fs.writeFileSync(SHOWS_FILE, '[]');
 if (!fs.existsSync(TICKETS_FILE)) fs.writeFileSync(TICKETS_FILE, '[]');
+if (!fs.existsSync(REFERRALS_FILE)) fs.writeFileSync(REFERRALS_FILE, '[]');
 
 const readJSON = file => JSON.parse(fs.readFileSync(file, 'utf-8'));
 const writeJSON = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -57,6 +59,18 @@ const Tickets = {
     if (i === -1) return null;
     all[i] = { ...all[i], ...updates }; writeJSON(TICKETS_FILE, all); return all[i];
   }
+};
+
+const Referrals = {
+  all: () => readJSON(REFERRALS_FILE),
+  find: id => Referrals.all().find(r => r.id === id),
+  create: r => { const all = Referrals.all(); all.unshift(r); writeJSON(REFERRALS_FILE, all); return r; },
+  update: (id, updates) => {
+    const all = Referrals.all(); const i = all.findIndex(r => r.id === id);
+    if (i === -1) return null;
+    all[i] = { ...all[i], ...updates }; writeJSON(REFERRALS_FILE, all); return all[i];
+  },
+  delete: id => writeJSON(REFERRALS_FILE, Referrals.all().filter(r => r.id !== id))
 };
 
 // ---------------------------------------------------------------------------
@@ -133,7 +147,7 @@ function generateReceiptPDF({ ticket, show }) {
     doc.moveDown(0.5);
     doc.text(`Category: ${show.type}`);
     doc.text(`Venue: ${show.venue}`);
-    doc.text(`Date: ${show.date}   Time: ${show.time}`);
+    doc.text(`Date: ${show.date}   Time: ${show.time}${show.duration ? '   Duration: ' + show.duration : ''}`);
 
     doc.moveDown(1);
     doc.moveTo(40, doc.y).lineTo(doc.page.width - 40, doc.y).dash(3, { space: 3 }).strokeColor('#999999').stroke();
@@ -228,8 +242,8 @@ app.get('/api/admin/session', (req, res) => res.json({ isAdmin: !!(req.session &
 // ---------------------------------------------------------------------------
 // Show routes
 // ---------------------------------------------------------------------------
-const publicShowFields = ({ id, title, description, type, venue, date, time, price, capacity, sold, posterUrl }) =>
-  ({ id, title, description, type, venue, date, time, price, capacity, sold, posterUrl });
+const publicShowFields = ({ id, title, description, type, venue, date, time, duration, price, capacity, sold, posterUrl }) =>
+  ({ id, title, description, type, venue, date, time, duration, price, capacity, sold, posterUrl });
 
 app.get('/api/shows', (req, res) => res.json(Shows.published().map(publicShowFields)));
 
@@ -242,12 +256,12 @@ app.get('/api/shows/:id', (req, res) => {
 });
 
 app.post('/api/shows/admin', requireAdmin, upload.single('poster'), (req, res) => {
-  const { title, description, type, venue, date, time, price, capacity, status } = req.body;
+  const { title, description, type, venue, date, time, duration, price, capacity, status } = req.body;
   if (!title || !venue || !date || !time || !price || !capacity) return res.status(400).json({ error: 'Missing required fields' });
 
   const show = {
     id: nanoid(10), title, description: description || '', type: type || 'Film Screening',
-    venue, date, time, price: Number(price), capacity: Number(capacity), sold: 0,
+    venue, date, time, duration: duration || '', price: Number(price), capacity: Number(capacity), sold: 0,
     posterUrl: req.file ? `/uploads/${req.file.filename}` : null,
     status: status === 'draft' ? 'draft' : 'live', createdAt: new Date().toISOString()
   };
@@ -272,7 +286,7 @@ app.delete('/api/shows/admin/:id', requireAdmin, (req, res) => { Shows.delete(re
 // ---------------------------------------------------------------------------
 app.post('/api/tickets/purchase', async (req, res) => {
   try {
-    const { showId, name, phone, email, quantity } = req.body;
+    const { showId, name, phone, email, quantity, refCode } = req.body;
     const qty = Number(quantity) || 1;
     if (!showId || !name || !phone || !email) return res.status(400).json({ error: 'Missing name, phone, email, or show' });
 
@@ -282,9 +296,14 @@ app.post('/api/tickets/purchase', async (req, res) => {
     const remaining = show.capacity - (show.sold || 0);
     if (qty > remaining) return res.status(400).json({ error: `Only ${remaining} tickets left` });
 
+    // Only honor a referral code if it actually exists and matches this show —
+    // an invalid/old code is silently ignored rather than blocking the purchase.
+    const referral = refCode ? Referrals.find(refCode) : null;
+    const validRefCode = (referral && referral.showId === showId) ? referral.id : null;
+
     const amount = show.price * qty;
     const ticket = Tickets.create({
-      id: nanoid(12), showId, name, phone, email, quantity: qty, amount,
+      id: nanoid(12), showId, name, phone, email, quantity: qty, amount, refCode: validRefCode,
       status: 'pending', checkoutRequestId: null, createdAt: new Date().toISOString()
     });
 
@@ -358,6 +377,59 @@ app.post('/api/tickets/:id/resend', async (req, res) => {
     console.error('Resend error:', err);
     res.status(500).json({ error: 'Could not resend email' });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Referral links — admin creates one per person per show, buyers who use
+// the link get tracked, and the admin sees & manually pays commission owed.
+// ---------------------------------------------------------------------------
+
+app.post('/api/referrals/admin', requireAdmin, (req, res) => {
+  const { name, phone, showId, commissionPercent } = req.body;
+  if (!name || !phone || !showId || commissionPercent === undefined) {
+    return res.status(400).json({ error: 'Missing name, phone, show, or commission percentage' });
+  }
+  const show = Shows.find(showId);
+  if (!show) return res.status(404).json({ error: 'Show not found' });
+
+  const referral = Referrals.create({
+    id: nanoid(8), name, phone, showId,
+    commissionPercent: Number(commissionPercent),
+    paidAmount: 0,
+    createdAt: new Date().toISOString()
+  });
+  res.status(201).json(referral);
+});
+
+app.get('/api/referrals/admin/all', requireAdmin, (req, res) => {
+  const referrals = Referrals.all();
+  const tickets = Tickets.all().filter(t => t.status === 'paid');
+  const shows = Shows.all();
+
+  const withStats = referrals.map(r => {
+    const refTickets = tickets.filter(t => t.refCode === r.id);
+    const totalSales = refTickets.reduce((sum, t) => sum + t.amount, 0);
+    const ticketsSold = refTickets.reduce((sum, t) => sum + t.quantity, 0);
+    const commissionEarned = Math.round(totalSales * (r.commissionPercent / 100));
+    const owed = commissionEarned - (r.paidAmount || 0);
+    const show = shows.find(s => s.id === r.showId);
+    return { ...r, showTitle: show ? show.title : '(deleted show)', ticketsSold, totalSales, commissionEarned, owed };
+  });
+
+  res.json(withStats);
+});
+
+app.post('/api/referrals/admin/:id/mark-paid', requireAdmin, (req, res) => {
+  const referral = Referrals.find(req.params.id);
+  if (!referral) return res.status(404).json({ error: 'Referral not found' });
+  const amount = Number(req.body.amount) || 0;
+  const updated = Referrals.update(referral.id, { paidAmount: (referral.paidAmount || 0) + amount });
+  res.json(updated);
+});
+
+app.delete('/api/referrals/admin/:id', requireAdmin, (req, res) => {
+  Referrals.delete(req.params.id);
+  res.json({ ok: true });
 });
 
 app.listen(PORT, () => console.log(`CampusFlix running on http://localhost:${PORT}`));
