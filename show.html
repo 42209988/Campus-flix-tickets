@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CampusFlix — Checkout</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Work+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+:root{
+  --black: #0b0908;
+  --surface: #171210;
+  --surface-2: #1f1815;
+  --surface-3: #241d19;
+  --red: #c31f2a;
+  --red-dim: #7d1319;
+  --gold: #e6ab35;
+  --gold-soft: #f3cf7f;
+  --cream: #ece3cd;
+  --ink: #f4efe4;
+  --ink-dim: #b8ada0;
+  --ink-faint: #776e62;
+  --line: rgba(230, 171, 53, 0.16);
+  --green: #4caf6d;
+}
+*{ box-sizing:border-box; }
+body{
+  margin:0; background: var(--black); color: var(--ink);
+  font-family:'Work Sans', sans-serif; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.display{ font-family:'Anton', sans-serif; text-transform:uppercase; letter-spacing:0.01em; margin:0; }
+a{ color:inherit; text-decoration:none; }
+button{ font-family:inherit; cursor:pointer; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{
+  outline: 2px solid var(--gold); outline-offset: 2px;
+}
+.wrap{ max-width: 1180px; margin:0 auto; padding: 0 28px; }
+
+.nav{ position: sticky; top:0; z-index: 50; background: rgba(11,9,8,0.9); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.nav-inner{ display:flex; align-items:center; justify-content:space-between; padding: 16px 0; }
+.brand{ display:flex; align-items:baseline; gap:8px; font-family:'Anton', sans-serif; font-size: 22px; }
+.brand .flix{ color: var(--red); }
+
+.filmstrip{ height: 24px; background: repeating-linear-gradient(90deg, #000 0 18px, transparent 18px 20px); background-color:#0f0c0a; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+
+.shows{ display:grid; grid-template-columns: repeat(3,1fr); gap:28px; }
+.ticket-card{ background: var(--cream); color:#221a12; border-radius:8px; overflow:hidden; box-shadow: 0 20px 40px -18px rgba(0,0,0,0.55); display:flex; flex-direction:column; text-decoration:none; transition: transform .2s ease; }
+.ticket-card:hover{ transform: translateY(-5px); }
+.poster{ height:190px; background-size:cover; background-position:center; position:relative; background-color:#1a1108; }
+.poster .tag{ position:absolute; top:12px; left:12px; background: var(--red); color:#fff; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; padding:5px 10px; border-radius:3px; }
+.ticket-body{ padding:20px 20px 0; flex:1; }
+.ticket-body h3{ font-family:'Anton', sans-serif; font-size:22px; line-height:1.1; }
+.ticket-body .venue, .ticket-body .date{ font-size:13px; color:#5c5138; margin-top:6px; }
+.ticket-foot{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px 20px; }
+.ticket-foot .price{ font-family:'Anton', sans-serif; font-size:20px; color: var(--red-dim); }
+.buy-btn{ background:#221a12; color: var(--cream); font-size:13px; font-weight:700; padding:10px 16px; border-radius:4px; border:none; }
+.buy-btn:hover{ background: var(--red); color:#fff; }
+
+.empty{ color: var(--ink-faint); text-align:center; padding: 60px 20px; font-size:14px; }
+
+footer{ border-top:1px solid var(--line); padding: 40px 0 28px; margin-top:60px; text-align:center; color:var(--ink-faint); font-size:12.5px; }
+
+/* checkout card */
+.card{ width:100%; max-width:460px; background: var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow: 0 30px 60px -20px rgba(0,0,0,.7); margin: 60px auto; }
+.card-top{ padding:22px 26px; border-bottom:1px solid var(--line); }
+.breadcrumb{ font-size:11.5px; color: var(--ink-faint); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+.card-body{ padding:26px; }
+.f-label{ font-size:12.5px; font-weight:600; color: var(--ink-dim); margin-bottom:9px; display:block; }
+.f-field{ margin-bottom:18px; }
+.f-field input{ width:100%; background: var(--surface-3); border:1px solid var(--line); color: var(--ink); padding:13px 14px; border-radius:8px; font-size:15px; font-family:inherit; }
+.f-field input:focus{ border-color: var(--gold); }
+.qty-row{ display:flex; align-items:center; justify-content:space-between; background: var(--surface-3); border:1px solid var(--line); border-radius:8px; padding:10px 16px; margin-bottom:22px; }
+.qty-controls{ display:flex; align-items:center; gap:16px; }
+.qty-btn{ width:30px; height:30px; border-radius:6px; border:1px solid var(--line); background:transparent; color:var(--ink); font-size:16px; }
+.qty-btn:hover{ border-color: var(--gold); color: var(--gold-soft); }
+.qty-num{ font-family:'Anton', sans-serif; font-size:18px; min-width:20px; text-align:center; display:inline-block; }
+.total-row{ display:flex; justify-content:space-between; align-items:center; padding-top:18px; margin-top:6px; border-top:1px dashed var(--line); }
+.total-row .v{ font-family:'Anton', sans-serif; font-size:24px; color: var(--gold-soft); }
+.pay-btn{ width:100%; background: var(--red); color:#fff; border:none; padding:15px; border-radius:8px; font-weight:700; font-size:15px; margin-top:22px; }
+.pay-btn:hover{ background:#a91821; }
+.pay-btn:disabled{ opacity:0.6; cursor:default; }
+.error-msg{ color:#ff8a8a; font-size:13px; margin-top:10px; }
+
+.waiting-body{ padding:50px 26px 40px; text-align:center; }
+.pulse-ring{ width:84px; height:84px; margin:0 auto 26px; border-radius:50%; background: rgba(76,175,109,0.1); border:2px solid var(--green); display:flex; align-items:center; justify-content:center; position:relative; font-size:30px; }
+.pulse-ring::before{ content:''; position:absolute; inset:-8px; border-radius:50%; border:2px solid rgba(76,175,109,0.3); animation: pulse 1.8s ease-out infinite; }
+@keyframes pulse{ 0%{ transform:scale(.85); opacity:1;} 100%{ transform:scale(1.35); opacity:0;} }
+
+.ticket-stub{ margin: 22px 26px 26px; background: var(--cream); color:#221a12; border-radius:8px; }
+.stub-top{ padding:20px 20px 16px; }
+.stub-label{ font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#8a7a5c; font-weight:700; }
+.stub-film{ font-family:'Anton', sans-serif; font-size:22px; margin-top:5px; }
+.stub-meta{ display:flex; gap:16px; margin-top:14px; font-size:12px; color:#4a3f2e; flex-wrap:wrap; }
+.stub-meta div span{ display:block; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#8a7a5c; margin-bottom:2px; }
+.perforation{ position:relative; height:0; border-top:2px dashed rgba(34,26,18,.3); }
+.stub-bottom{ padding:20px; display:flex; flex-direction:column; align-items:center; gap:12px; }
+.qr-box img{ width:150px; height:150px; border-radius:6px; }
+.stub-code{ font-size:11px; letter-spacing:.1em; color:#8a7a5c; font-weight:700; }
+
+@media (max-width: 900px){ .shows{ grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px){ .shows{ grid-template-columns: 1fr; } .card{ margin: 20px auto; } }
+
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/"><span>CAMPUS</span><span class="flix">FLIX</span></a>
+  </div>
+</div>
+
+<div id="app">
+  <div class="card"><div class="card-body"><div class="empty">Loading…</div></div></div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const showId = params.get('id');
+const refCode = params.get('ref');
+let show = null;
+let qty = 1;
+let pollTimer = null;
+
+async function init(){
+  if (!showId){ renderError('No show specified.'); return; }
+  try{
+    const res = await fetch(`/api/shows/${showId}`);
+    if (!res.ok){ renderError("This show isn't available."); return; }
+    show = await res.json();
+    if (show.entryType === 'registration') {
+      renderRegistration();
+    } else {
+      renderCheckout();
+    }
+  } catch(e){
+    renderError('Something went wrong loading this show.');
+  }
+}
+
+function renderError(msg){
+  document.getElementById('app').innerHTML = `<div class="card"><div class="card-body"><p class="error-msg">${msg}</p><a href="/" style="color:var(--gold-soft); font-size:13px;">← Back to shows</a></div></div>`;
+}
+
+function renderCheckout(){
+  const remaining = show.capacity - show.sold;
+  document.getElementById('app').innerHTML = `
+    <div class="card">
+      <div class="card-top">
+        <div class="breadcrumb">CampusFlix · Checkout</div>
+        <h2 style="font-size:20px;">Get Your Ticket</h2>
+      </div>
+      <div class="card-body">
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom:24px;">
+          <div style="width:56px;height:56px;border-radius:7px;background:linear-gradient(160deg,#3a2318,#1a1108); ${show.posterUrl ? `background-image:url('${show.posterUrl}');background-size:cover;` : ''}"></div>
+          <div>
+            <div style="font-weight:700; font-size:15px;">${escapeHtml(show.title)}</div>
+            <div style="font-size:12.5px; color:var(--ink-dim); margin-top:3px;">${escapeHtml(show.venue)} · ${formatDate(show.date)} · ${show.time}${show.duration ? ' · ' + escapeHtml(show.duration) : ''}</div>
+          </div>
+        </div>
+
+        ${remaining <= 0 ? `<p class="error-msg">This show is sold out.</p>` : `
+        <label class="f-label">Number of Tickets</label>
+        <div class="qty-row">
+          <span style="font-size:13px; color:var(--ink-dim);">KES ${show.price} each · ${remaining} left</span>
+          <div class="qty-controls">
+            <button class="qty-btn" onclick="changeQty(-1)">−</button>
+            <span class="qty-num" id="qtyNum">1</span>
+            <button class="qty-btn" onclick="changeQty(1)">+</button>
+          </div>
+        </div>
+
+        <div class="f-field">
+          <label class="f-label">Your Name</label>
+          <input id="name" type="text" placeholder="e.g. Robert Mwangi">
+        </div>
+        <div class="f-field">
+          <label class="f-label">Email Address</label>
+          <input id="email" type="email" placeholder="you@example.com">
+          <div class="hint" style="font-size:11.5px; color:var(--ink-faint); margin-top:6px;">Your PDF ticket will be sent here.</div>
+        </div>
+        <div class="f-field">
+          <label class="f-label">M-Pesa Phone Number</label>
+          <input id="phone" type="tel" placeholder="07XX XXX XXX">
+        </div>
+
+        <div class="total-row">
+          <span style="font-size:13px; color:var(--ink-dim);">Total</span>
+          <span class="v" id="totalPrice">KES ${show.price}</span>
+        </div>
+
+        <button class="pay-btn" id="payBtn" onclick="startPayment()">Pay with M-Pesa</button>
+        <div id="errorArea"></div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function changeQty(delta){
+  const remaining = show.capacity - show.sold;
+  qty = Math.max(1, Math.min(remaining, qty + delta));
+  document.getElementById('qtyNum').textContent = qty;
+  document.getElementById('totalPrice').textContent = `KES ${show.price * qty}`;
+}
+
+function renderRegistration(){
+  const remaining = show.capacity - show.sold;
+  document.getElementById('app').innerHTML = `
+    <div class="card">
+      <div class="card-top">
+        <div class="breadcrumb">CampusFlix · Free Registration</div>
+        <h2 style="font-size:20px;">Register to Participate</h2>
+      </div>
+      <div class="card-body">
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom:24px;">
+          <div style="width:56px;height:56px;border-radius:7px;background:linear-gradient(160deg,#3a2318,#1a1108); ${show.posterUrl ? `background-image:url('${show.posterUrl}');background-size:cover;` : ''}"></div>
+          <div>
+            <div style="font-weight:700; font-size:15px;">${escapeHtml(show.title)}</div>
+            <div style="font-size:12.5px; color:var(--ink-dim); margin-top:3px;">${escapeHtml(show.venue)} · ${formatDate(show.date)} · ${show.time}${show.duration ? ' · ' + escapeHtml(show.duration) : ''}</div>
+          </div>
+        </div>
+
+        ${remaining <= 0 ? `<p class="error-msg">Registration is full.</p>` : `
+        <p style="color:var(--ink-dim); font-size:13px; margin-bottom:20px;">${remaining} spot${remaining === 1 ? '' : 's'} left · Entry is free</p>
+
+        <div class="f-field">
+          <label class="f-label">Your Name</label>
+          <input id="regName" type="text" placeholder="e.g. Robert Mwangi">
+        </div>
+        <div class="f-field">
+          <label class="f-label">Phone Number</label>
+          <input id="regPhone" type="tel" placeholder="07XX XXX XXX">
+        </div>
+        <div class="f-field">
+          <label class="f-label">Email (optional)</label>
+          <input id="regEmail" type="email" placeholder="you@example.com">
+        </div>
+        <div class="f-field">
+          <label class="f-label">What will you be performing? (optional)</label>
+          <input id="regNote" type="text" placeholder="e.g. Monologue title">
+        </div>
+
+        <button class="pay-btn" id="regBtn" onclick="submitRegistration()">Register — It's Free</button>
+        <div id="errorArea"></div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+async function submitRegistration(){
+  const name = document.getElementById('regName').value.trim();
+  const phone = document.getElementById('regPhone').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const note = document.getElementById('regNote').value.trim();
+  const errorArea = document.getElementById('errorArea');
+  errorArea.innerHTML = '';
+
+  if (!name || !phone){
+    errorArea.innerHTML = `<div class="error-msg">Please enter your name and phone number.</div>`;
+    return;
+  }
+
+  const btn = document.getElementById('regBtn');
+  btn.disabled = true;
+  btn.textContent = 'Registering…';
+
+  try{
+    const res = await fetch('/api/registrations', {
+      method:'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ showId, name, phone, email, note })
+    });
+    const data = await res.json();
+    if (!res.ok){
+      errorArea.innerHTML = `<div class="error-msg">${escapeHtml(data.error || 'Could not register.')}</div>`;
+      btn.disabled = false;
+      btn.textContent = "Register — It's Free";
+      return;
+    }
+    renderRegistrationConfirmed(name, data.registrationId);
+  } catch(e){
+    errorArea.innerHTML = `<div class="error-msg">Network error. Please try again.</div>`;
+    btn.disabled = false;
+    btn.textContent = "Register — It's Free";
+  }
+}
+
+function renderRegistrationConfirmed(name, registrationId){
+  document.getElementById('app').innerHTML = `
+    <div class="card">
+      <div style="background: linear-gradient(160deg, rgba(76,175,109,0.12), transparent); padding: 30px 26px 26px; text-align:center;">
+        <div style="width:52px;height:52px;border-radius:50%;background:var(--green);color:#0b0908;font-size:24px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">✓</div>
+        <h2 style="font-size:19px; font-family:'Work Sans',sans-serif; text-transform:none; font-weight:700;">You're Registered!</h2>
+        <p style="color:var(--ink-dim); font-size:13.5px; margin-top:8px;">Thanks, ${escapeHtml(name)}. See you at <b style="color:var(--gold-soft)">${escapeHtml(show.title)}</b> on ${formatDate(show.date)}.</p>
+      </div>
+      <div style="padding: 0 26px 26px; display:flex; gap:10px;">
+        <a href="/api/registrations/${registrationId}/pdf" style="flex:1; text-align:center; padding:13px; border-radius:8px; border:1px solid var(--line); color:var(--ink-dim); font-size:13.5px; font-weight:700;">Download PDF</a>
+        <a href="/" style="flex:1; text-align:center; padding:13px; border-radius:8px; background:var(--red); color:#fff; font-size:13.5px; font-weight:700;">Back Home</a>
+      </div>
+    </div>
+  `;
+}
+
+async function startPayment(){
+  const name = document.getElementById('name').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const errorArea = document.getElementById('errorArea');
+  errorArea.innerHTML = '';
+
+  if (!name || !email || !phone){
+    errorArea.innerHTML = `<div class="error-msg">Please enter your name, email, and phone number.</div>`;
+    return;
+  }
+  if (!email.includes('@') || !email.includes('.')){
+    errorArea.innerHTML = `<div class="error-msg">Please enter a valid email address.</div>`;
+    return;
+  }
+
+  const btn = document.getElementById('payBtn');
+  btn.disabled = true;
+  btn.textContent = 'Sending prompt…';
+
+  try{
+    const res = await fetch('/api/tickets/purchase', {
+      method:'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ showId, name, email, phone, quantity: qty, refCode })
+    });
+    const data = await res.json();
+    if (!res.ok){
+      errorArea.innerHTML = `<div class="error-msg">${escapeHtml(data.error || 'Payment could not be started.')}</div>`;
+      btn.disabled = false;
+      btn.textContent = 'Pay with M-Pesa';
+      return;
+    }
+    renderWaiting(data.ticketId, phone);
+  } catch(e){
+    errorArea.innerHTML = `<div class="error-msg">Network error. Please try again.</div>`;
+    btn.disabled = false;
+    btn.textContent = 'Pay with M-Pesa';
+  }
+}
+
+function renderWaiting(ticketId, phone){
+  document.getElementById('app').innerHTML = `
+    <div class="card">
+      <div class="waiting-body">
+        <div class="pulse-ring">📲</div>
+        <h3 style="font-family:'Work Sans',sans-serif; font-weight:700; font-size:17px; text-transform:none; margin-bottom:10px;">Check your phone</h3>
+        <p style="color:var(--ink-dim); font-size:13.5px; line-height:1.6; max-width:32ch; margin:0 auto;">
+          We've sent a payment request to <b style="color:var(--gold-soft)">${escapeHtml(phone)}</b>. Enter your M-Pesa PIN to confirm.
+        </p>
+      </div>
+    </div>
+  `;
+  pollStatus(ticketId);
+}
+
+function pollStatus(ticketId){
+  let attempts = 0;
+  pollTimer = setInterval(async () => {
+    attempts++;
+    if (attempts > 40){ // ~2 minutes at 3s intervals
+      clearInterval(pollTimer);
+      renderError('Payment timed out. If money left your account, contact us — otherwise please try again.');
+      return;
+    }
+    try{
+      const res = await fetch(`/api/tickets/${ticketId}/status`);
+      const data = await res.json();
+      if (data.status === 'paid'){
+        clearInterval(pollTimer);
+        window.location.href = `/ticket.html?id=${ticketId}`;
+      } else if (data.status === 'failed'){
+        clearInterval(pollTimer);
+        renderError('Payment was not completed. You can go back and try again.');
+      }
+    } catch(e){ /* keep polling */ }
+  }, 3000);
+}
+
+function formatDate(iso){
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-KE', { weekday:'short', month:'short', day:'numeric' });
+}
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+init();
+</script>
+</body>
+</html>

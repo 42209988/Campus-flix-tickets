@@ -170,11 +170,100 @@ function generateReceiptPDF({ ticket, show }) {
   });
 }
 
-// Emails the PDF receipt to the buyer using Brevo's HTTP API.
+// Builds a simple PDF confirmation for a free registration (no payment info).
+function generateRegistrationPDF({ registration, show }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A5', margin: 40 });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    doc.rect(0, 0, doc.page.width, 90).fill('#0b0908');
+    doc.fillColor('#c31f2a').font('Helvetica-Bold').fontSize(22).text('CAMPUS', 40, 32, { continued: true });
+    doc.fillColor('#ffffff').text('FLIX');
+    doc.fillColor('#e6ab35').font('Helvetica').fontSize(10).text('REGISTRATION CONFIRMATION', 40, 62);
+
+    doc.moveDown(3);
+    doc.fillColor('#111111').font('Helvetica-Bold').fontSize(20).text(show.title, 40, 120);
+    doc.font('Helvetica').fontSize(11).fillColor('#444444');
+    doc.moveDown(0.5);
+    doc.text(`Category: ${show.type}`);
+    doc.text(`Venue: ${show.venue}`);
+    doc.text(`Date: ${show.date}   Time: ${show.time}${show.duration ? '   Duration: ' + show.duration : ''}`);
+
+    doc.moveDown(1);
+    doc.moveTo(40, doc.y).lineTo(doc.page.width - 40, doc.y).dash(3, { space: 3 }).strokeColor('#999999').stroke();
+    doc.undash();
+    doc.moveDown(1);
+
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Registered Name');
+    doc.font('Helvetica').fontSize(11).fillColor('#444444').text(registration.name);
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Phone');
+    doc.font('Helvetica').fontSize(11).fillColor('#444444').text(registration.phone);
+    if (registration.note) {
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Performance / Note');
+      doc.font('Helvetica').fontSize(11).fillColor('#444444').text(registration.note);
+    }
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Entry');
+    doc.font('Helvetica').fontSize(11).fillColor('#444444').text('Free');
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Confirmation No.');
+    doc.font('Helvetica').fontSize(11).fillColor('#444444').text(registration.id.toUpperCase());
+
+    doc.moveDown(1.5);
+    doc.font('Helvetica-Oblique').fontSize(9).fillColor('#888888')
+      .text('Please arrive a little early. This confirmation is proof of your registration.', { width: doc.page.width - 80 });
+
+    doc.end();
+  });
+}
+
+// Builds a PDF list of everyone registered for a show — for the admin to
+// download, print, or check people off at the door.
+function generateRegistrantsListPDF({ show, registrants }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    doc.rect(0, 0, doc.page.width, 80).fill('#0b0908');
+    doc.fillColor('#c31f2a').font('Helvetica-Bold').fontSize(20).text('CAMPUS', 40, 26, { continued: true });
+    doc.fillColor('#ffffff').text('FLIX');
+    doc.fillColor('#e6ab35').font('Helvetica').fontSize(10).text('REGISTRANTS LIST', 40, 54);
+
+    doc.moveDown(3.5);
+    doc.fillColor('#111111').font('Helvetica-Bold').fontSize(16).text(show.title, 40, 105);
+    doc.font('Helvetica').fontSize(10).fillColor('#555555').text(`${show.venue} · ${show.date} · ${show.time}`);
+    doc.moveDown(0.3);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#333333').text(`Total registered: ${registrants.length}`);
+    doc.moveDown(1);
+
+    doc.moveTo(40, doc.y).lineTo(doc.page.width - 40, doc.y).strokeColor('#cccccc').stroke();
+    doc.moveDown(0.5);
+
+    registrants.forEach((r, i) => {
+      if (doc.y > doc.page.height - 80) doc.addPage();
+      doc.font('Helvetica-Bold').fontSize(11).fillColor('#111111').text(`${i + 1}. ${r.name}`, { continued: false });
+      doc.font('Helvetica').fontSize(10).fillColor('#555555').text(`   ${r.phone}${r.email ? '  ·  ' + r.email : ''}`);
+      if (r.note) doc.font('Helvetica-Oblique').fontSize(9.5).fillColor('#777777').text(`   "${r.note}"`);
+      doc.moveDown(0.6);
+    });
+
+    doc.end();
+  });
+}
+
+// Emails a PDF attachment using Brevo's HTTP API.
 // (Not SMTP — Render's free tier blocks outbound SMTP ports, but regular
 // HTTPS requests like this go through fine.)
-async function sendTicketEmail({ to, name, show, pdfBuffer }) {
-  console.log(`[email] Sending ticket for "${show.title}" to: "${to}" from: "${process.env.EMAIL_USER}"`);
+async function sendPdfEmail({ to, name, subject, text, pdfBuffer, filename }) {
+  console.log(`[email] Sending "${subject}" to: "${to}" from: "${process.env.EMAIL_USER}"`);
 
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
@@ -186,12 +275,9 @@ async function sendTicketEmail({ to, name, show, pdfBuffer }) {
     body: JSON.stringify({
       sender: { email: process.env.EMAIL_USER, name: 'CampusFlix' },
       to: [{ email: to, name }],
-      subject: `Your CampusFlix Ticket — ${show.title}`,
-      textContent: `Hi ${name},\n\nYour ticket for ${show.title} is attached as a PDF. See you there!\n\n— CampusFlix`,
-      attachment: [{
-        content: pdfBuffer.toString('base64'),
-        name: `campusflix-ticket-${show.title.replace(/\s+/g, '-').toLowerCase()}.pdf`
-      }]
+      subject,
+      textContent: text,
+      attachment: [{ content: pdfBuffer.toString('base64'), name: filename }]
     })
   });
 
@@ -201,6 +287,16 @@ async function sendTicketEmail({ to, name, show, pdfBuffer }) {
     throw new Error(data.message || `Brevo send failed with status ${res.status}`);
   }
   console.log(`[email] Sent. messageId=${data.messageId}`);
+}
+
+async function sendTicketEmail({ to, name, show, pdfBuffer }) {
+  return sendPdfEmail({
+    to, name,
+    subject: `Your CampusFlix Ticket — ${show.title}`,
+    text: `Hi ${name},\n\nYour ticket for ${show.title} is attached as a PDF. See you there!\n\n— CampusFlix`,
+    pdfBuffer,
+    filename: `campusflix-ticket-${show.title.replace(/\s+/g, '-').toLowerCase()}.pdf`
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +397,7 @@ app.delete('/api/shows/admin/:id', requireAdmin, async (req, res) => { await Sho
 
 // ---------------------------------------------------------------------------
 // Free registrations — for events like competitions where people sign up
-// without paying. No M-Pesa, no PDF ticket — just a confirmation.
+// without paying. No M-Pesa — just a free PDF confirmation.
 // ---------------------------------------------------------------------------
 app.post('/api/registrations', async (req, res) => {
   try {
@@ -322,6 +418,23 @@ app.post('/api/registrations', async (req, res) => {
     });
     await Shows.incrementSold(showId, 1);
 
+    // Email the confirmation PDF if they gave an email — but don't let a
+    // failed send block the registration itself, which already succeeded.
+    if (email) {
+      try {
+        const pdfBuffer = await generateRegistrationPDF({ registration, show });
+        await sendPdfEmail({
+          to: email, name,
+          subject: `You're Registered — ${show.title}`,
+          text: `Hi ${name},\n\nYour registration for ${show.title} is confirmed. Your confirmation is attached as a PDF.\n\n— CampusFlix`,
+          pdfBuffer,
+          filename: `campusflix-registration-${show.title.replace(/\s+/g, '-').toLowerCase()}.pdf`
+        });
+      } catch (emailErr) {
+        console.error('Registration email error:', emailErr);
+      }
+    }
+
     res.status(201).json({ registrationId: registration.id });
   } catch (err) {
     console.error('Registration error:', err);
@@ -335,9 +448,33 @@ app.get('/api/registrations/:id', async (req, res) => {
   res.json({ registration, show: await Shows.find(registration.showId) });
 });
 
+// Lets a registrant download their own confirmation PDF directly, regardless
+// of whether email delivery worked.
+app.get('/api/registrations/:id/pdf', async (req, res) => {
+  const registration = await Registrations.find(req.params.id);
+  if (!registration) return res.status(404).json({ error: 'Registration not found' });
+  const show = await Shows.find(registration.showId);
+  const pdfBuffer = await generateRegistrationPDF({ registration, show });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="campusflix-registration-${registration.id}.pdf"`);
+  res.send(pdfBuffer);
+});
+
 app.get('/api/registrations/admin/for-show/:showId', requireAdmin, async (req, res) => {
   res.json(await Registrations.forShow(req.params.showId));
 });
+
+// Admin download: full PDF list of everyone registered for a show.
+app.get('/api/registrations/admin/for-show/:showId/pdf', requireAdmin, async (req, res) => {
+  const show = await Shows.find(req.params.showId);
+  if (!show) return res.status(404).json({ error: 'Show not found' });
+  const registrants = await Registrations.forShow(req.params.showId);
+  const pdfBuffer = await generateRegistrantsListPDF({ show, registrants });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="registrants-${show.title.replace(/\s+/g, '-').toLowerCase()}.pdf"`);
+  res.send(pdfBuffer);
+});
+
 
 
 // ---------------------------------------------------------------------------
