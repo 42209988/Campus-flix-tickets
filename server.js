@@ -62,6 +62,13 @@ const Referrals = {
   delete: id => db.collection('referrals').deleteOne({ id })
 };
 
+const Registrations = {
+  all: () => db.collection('registrations').find({}).sort({ createdAt: -1 }).toArray(),
+  find: id => db.collection('registrations').findOne({ id }),
+  forShow: showId => db.collection('registrations').find({ showId }).sort({ createdAt: -1 }).toArray(),
+  create: async r => { await db.collection('registrations').insertOne(r); return r; }
+};
+
 // ---------------------------------------------------------------------------
 // M-Pesa (Safaricom Daraja) — STK push
 // ---------------------------------------------------------------------------
@@ -244,8 +251,8 @@ app.get('/api/admin/session', (req, res) => res.json({ isAdmin: !!(req.session &
 // ---------------------------------------------------------------------------
 // Show routes
 // ---------------------------------------------------------------------------
-const publicShowFields = ({ id, title, description, type, venue, date, time, duration, price, capacity, sold, posterUrl }) =>
-  ({ id, title, description, type, venue, date, time, duration, price, capacity, sold, posterUrl });
+const publicShowFields = ({ id, title, description, type, venue, date, time, duration, price, capacity, sold, posterUrl, entryType }) =>
+  ({ id, title, description, type, venue, date, time, duration, price, capacity, sold, posterUrl, entryType: entryType || 'ticket' });
 
 app.get('/api/shows', async (req, res) => {
   const shows = await Shows.published();
@@ -261,12 +268,18 @@ app.get('/api/shows/:id', async (req, res) => {
 });
 
 app.post('/api/shows/admin', requireAdmin, upload.single('poster'), async (req, res) => {
-  const { title, description, type, venue, date, time, duration, price, capacity, status } = req.body;
-  if (!title || !venue || !date || !time || !price || !capacity) return res.status(400).json({ error: 'Missing required fields' });
+  const { title, description, type, venue, date, time, duration, price, capacity, status, entryType } = req.body;
+  const isRegistration = entryType === 'registration';
+  if (!title || !venue || !date || !time || !capacity || (!isRegistration && !price)) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
 
   const show = {
     id: nanoid(10), title, description: description || '', type: type || 'Film Screening',
-    venue, date, time, duration: duration || '', price: Number(price), capacity: Number(capacity), sold: 0,
+    venue, date, time, duration: duration || '',
+    entryType: isRegistration ? 'registration' : 'ticket',
+    price: isRegistration ? 0 : Number(price),
+    capacity: Number(capacity), sold: 0,
     posterUrl: req.file ? `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}` : null,
     status: status === 'draft' ? 'draft' : 'live', createdAt: new Date().toISOString()
   };
@@ -285,6 +298,47 @@ app.put('/api/shows/admin/:id', requireAdmin, upload.single('poster'), async (re
 });
 
 app.delete('/api/shows/admin/:id', requireAdmin, async (req, res) => { await Shows.delete(req.params.id); res.json({ ok: true }); });
+
+// ---------------------------------------------------------------------------
+// Free registrations — for events like competitions where people sign up
+// without paying. No M-Pesa, no PDF ticket — just a confirmation.
+// ---------------------------------------------------------------------------
+app.post('/api/registrations', async (req, res) => {
+  try {
+    const { showId, name, phone, email, note } = req.body;
+    if (!showId || !name || !phone) return res.status(400).json({ error: 'Missing name, phone, or event' });
+
+    const show = await Shows.find(showId);
+    if (!show || show.status !== 'live' || !isUpcoming(show) || show.entryType !== 'registration') {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const remaining = show.capacity - (show.sold || 0);
+    if (remaining <= 0) return res.status(400).json({ error: 'Registration is full' });
+
+    const registration = await Registrations.create({
+      id: nanoid(10), showId, name, phone, email: email || '', note: note || '',
+      createdAt: new Date().toISOString()
+    });
+    await Shows.incrementSold(showId, 1);
+
+    res.status(201).json({ registrationId: registration.id });
+  } catch (err) {
+    console.error('Registration error:', err);
+    res.status(500).json({ error: 'Could not complete registration. Please try again.' });
+  }
+});
+
+app.get('/api/registrations/:id', async (req, res) => {
+  const registration = await Registrations.find(req.params.id);
+  if (!registration) return res.status(404).json({ error: 'Registration not found' });
+  res.json({ registration, show: await Shows.find(registration.showId) });
+});
+
+app.get('/api/registrations/admin/for-show/:showId', requireAdmin, async (req, res) => {
+  res.json(await Registrations.forShow(req.params.showId));
+});
+
 
 // ---------------------------------------------------------------------------
 // Ticket / payment routes
